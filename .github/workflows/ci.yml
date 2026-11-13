@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Get gitleaks (pinned, checksum-verified)
+        run: node scripts/get-gitleaks.mjs
+      - name: Scan history and tree for secrets / personal data
+        run: tools/bin/gitleaks git --redact --no-banner --config .gitleaks.toml .
+
+  plugin:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Verify main.js embeds exactly the pinned renderer
+        run: npm run verify
+      - run: npm test
+

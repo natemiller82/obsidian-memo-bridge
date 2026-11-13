@@ -1,0 +1,18 @@
+#!/bin/sh
+# Block commits that contain secrets or personal data (gitleaks, staged changes only).
+# Enable once per clone:   git config core.hooksPath .githooks
+# Get the scanner:         node scripts/get-gitleaks.mjs   (or have gitleaks on PATH)
+root=$(git rev-parse --show-toplevel)
+gl=""
+for c in "$root/tools/bin/gitleaks.exe" "$root/tools/bin/gitleaks"; do [ -x "$c" ] && gl="$c" && break; done
+[ -z "$gl" ] && command -v gitleaks >/dev/null 2>&1 && gl=gitleaks
+if [ -z "$gl" ]; then
+  echo "pre-commit: gitleaks not found. Run: node scripts/get-gitleaks.mjs" >&2
+  exit 1
+fi
+cfg="$root/.gitleaks.toml"
+[ -f "$root/.gitleaks.local.toml" ] && cfg="$root/.gitleaks.local.toml"
+if ! "$gl" git --pre-commit --staged --redact --no-banner --config "$cfg" "$root"; then
+  echo "pre-commit: gitleaks found secrets or personal data in the staged changes; commit blocked." >&2
+  exit 1
+fi

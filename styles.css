@@ -1,0 +1,5 @@
+/* Memo Bridge */
+.memo-bridge-status { cursor: pointer; }
+.memo-bridge-status.is-error { color: var(--text-error); }
+.memo-bridge-status.is-paused { color: var(--text-muted); }
+.memo-bridge-report { white-space: pre-wrap; font-family: var(--font-monospace); font-size: var(--font-smaller); max-height: 60vh; overflow: auto; }

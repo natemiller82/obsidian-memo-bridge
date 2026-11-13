@@ -1,0 +1,32 @@
+{
+  "name": "memo-bridge",
+  "version": "0.5.0",
+  "private": true,
+  "description": "Import notes from the Samsung Notes app for Windows into an Obsidian vault.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.mjs production",
+    "dev-install": "node esbuild.config.mjs production && node scripts/dev-install.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "verify": "node scripts/verify-main.mjs main.js",
+    "eval": "node eval/run-ts.mjs"
+  },
+  "dependencies": {
+    "@twango/sdocx": "1.1.0",
+    "@xmldom/xmldom": "0.9.12"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
+    "jpeg-js": "0.4.4",
+    "obsidian": "1.14.4",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

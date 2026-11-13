@@ -1,0 +1,16 @@
+node_modules/
+main.js
+*.log
+logs/
+*.sqlite
+*.sdocx
+data.json
+*.local.json
+.gitleaks.local.toml
+tools/
+test/out/
+eval/.out/
+.vitest/
+.claude/
+# your own notes for the recognition eval harness: never commit
+local/

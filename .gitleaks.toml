@@ -1,0 +1,47 @@
+# Secret and personal-data scan for this repo (gitleaks v8).
+# Runs as a pre-commit hook (.githooks/pre-commit) and in CI.
+# Put your own names, e-mail and device ids in .gitleaks.local.toml (gitignored);
+# it extends this file, so the hook checks both.
+
+title = "memo-bridge"
+
+[extend]
+useDefault = true
+
+# Samsung Notes note/folder ids: <8>-<4>-<4>-0000-<12 hex ms>, optionally _screenoff.
+# The first 18 characters identify the source device, so real ids must never be committed.
+[[rules]]
+id = "samsung-note-id"
+description = "Samsung Notes id (contains a device-specific prefix)"
+regex = '''\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-0000-[0-9a-f]{12}(?:_screenoff)?\b'''
+keywords = ["-0000-"]
+[[rules.allowlists]]
+description = "synthetic fixture ids"
+regexes = ['''^f1f1f1f1-0000-4000-0000-''']
+
+# Absolute paths into a Windows user profile reveal the account name.
+[[rules]]
+id = "windows-user-path"
+description = "Absolute path into a Windows user profile"
+regex = '''(?i)\b[a-z]:(?:\\\\|\\|/)users(?:\\\\|\\|/)([a-z0-9._ -]+)'''
+secretGroup = 1
+keywords = ["users"]
+[[rules.allowlists]]
+description = "placeholders"
+regexes = ['''^(someone|<user>|<name>|public|default)$''']
+
+# E-mail addresses (other than no-reply / example addresses).
+[[rules]]
+id = "email-address"
+description = "E-mail address"
+regex = '''\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b'''
+keywords = ["@"]
+[[rules.allowlists]]
+description = "no-reply and example addresses"
+regexes = [
+  '''(?i)(noreply|no-reply)@''',
+  '''(?i)@(example\.(com|org|net)|users\.noreply\.github\.com)$''',
+  # Samsung media file names look like addresses: "0@image0.jpg", "1@page_0000007.spi"
+  '''^\d+@''',
+  '''(?i)\.(jpe?g|png|gif|webp|bmp|heic|svg|pdf|spi|spd|spp|dat|mp3|m4a|wav|amr|mp4)$''',
+]

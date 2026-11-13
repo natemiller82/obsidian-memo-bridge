@@ -1,0 +1,8 @@
+{
+  "package": "@twango/sdocx",
+  "version": "1.1.0",
+  "wasm": "sdocx_bg.wasm",
+  "wasmSha256": "39a8219a025957f97fe2729fb7f641750f67040f57119c69fa286b8fe34d65f4",
+  "source": "https://github.com/twangodev/sdocx",
+  "license": "GPL-3.0"
+}
