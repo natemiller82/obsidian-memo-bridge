@@ -44,7 +44,10 @@ export class InlineRenderer implements Renderer {
   dispose(): void { this.mod = null; }
 }
 
-interface Pending { resolve: (r: DocRender) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
+interface Pending { resolve: (r: DocRender) => void; reject: (e: Error) => void; timer: number }
+
+/** What the render worker sends back. */
+interface WorkerReply { type?: string; id?: number; ok?: boolean; result?: DocRender; format?: boolean; error?: string }
 
 /** Runs sdocx in a Web Worker; a render that exceeds the timeout terminates the worker. */
 export class WorkerRenderer implements Renderer {
@@ -63,8 +66,9 @@ export class WorkerRenderer implements Renderer {
     this.worker = w;
     this.ready = new Promise<void>((resolve, reject) => {
       const onInit = (ev: MessageEvent) => {
-        if (ev.data?.type === "ready") { w.removeEventListener("message", onInit); resolve(); }
-        else if (ev.data?.type === "init-error") { w.removeEventListener("message", onInit); reject(new RendererUnavailable(ev.data.error)); }
+        const m = ev.data as WorkerReply | null;
+        if (m?.type === "ready") { w.removeEventListener("message", onInit); resolve(); }
+        else if (m?.type === "init-error") { w.removeEventListener("message", onInit); reject(new RendererUnavailable(m.error)); }
       };
       w.addEventListener("message", onInit);
       w.addEventListener("error", (e) => {
@@ -73,13 +77,13 @@ export class WorkerRenderer implements Renderer {
       });
     });
     w.addEventListener("message", (ev: MessageEvent) => {
-      const m = ev.data;
-      if (m?.type !== "result") return;
+      const m = ev.data as WorkerReply | null;
+      if (m?.type !== "result" || m.id === undefined) return;
       const p = this.pending.get(m.id);
       if (!p) return;
       this.pending.delete(m.id);
-      clearTimeout(p.timer);
-      if (m.ok) p.resolve(m.result as DocRender);
+      window.clearTimeout(p.timer);
+      if (m.ok && m.result) p.resolve(m.result);
       else p.reject(m.format ? new FormatError(m.error) : new Error(m.error));
     });
     const wasm = this.wasm();
@@ -92,7 +96,7 @@ export class WorkerRenderer implements Renderer {
     this.worker?.terminate();
     this.worker = null;
     this.ready = null;
-    for (const [, p] of this.pending) { clearTimeout(p.timer); p.reject(reason); }
+    for (const [, p] of this.pending) { window.clearTimeout(p.timer); p.reject(reason); }
     this.pending.clear();
   }
 
@@ -102,7 +106,7 @@ export class WorkerRenderer implements Renderer {
     await this.start();
     const id = ++this.seq;
     return new Promise<DocRender>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const timer = window.setTimeout(() => {
         this.log.warn(`render timed out after ${timeoutMs / 1000}s; restarting the render worker`);
         this.pending.delete(id);
         reject(new RenderTimeout(`render took longer than ${timeoutMs / 1000}s`));

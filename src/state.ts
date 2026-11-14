@@ -155,7 +155,7 @@ export class State {
     const prev = this.enrichRow(noteId, revision, enricher);
     const same = !!prev && prev.enricher_version === version && prev.input_sha256 === inputSha;
     this.db.prepare("INSERT OR REPLACE INTO enrich VALUES (?,?,?,?,?,?,?,?,?,?)").run(
-      noteId, revision, enricher, version, inputSha, status, JSON.stringify(outputs), (same ? prev!.attempts : 0) + 1, nowIso(), error);
+      noteId, revision, enricher, version, inputSha, status, JSON.stringify(outputs), (same ? prev.attempts : 0) + 1, nowIso(), error);
   }
 
   getMeta(key: string): string | null {

@@ -22,7 +22,16 @@ import { FIX, ID, sharedRenderer } from "./helpers";
 import { decodePng, type Rgba } from "./png";
 
 const require = createRequire(import.meta.url);
-type Any = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+// The parts of sdocx's inspection() result this test reads (the binding returns it untyped).
+interface InsStroke {
+  rendering: { pen_name: string; advanced_settings?: string; style: { color_argb: number; pen_size: number } };
+  points: { x: number; y: number }[];
+  pressures: number[];
+}
+interface Inspection {
+  document: { pages: { objects: { content?: { Stroke?: InsStroke } }[] }[] };
+  layout: { pages: { width: number; page?: { width?: number } }[] };
+}
 
 interface Stroke { pen: string; settings: string; size: number; rgb: number[]; pts: [number, number][]; pr: number[] }
 
@@ -44,14 +53,14 @@ async function strokesOf(bytes: Uint8Array): Promise<{ strokes: Stroke[]; pageW:
   await m.default({ module_or_path: fs.readFileSync(require.resolve("@twango/sdocx/sdocx_bg.wasm")) });
   const s = new m.DocumentSession(bytes);
   try {
-    const ins = s.inspection() as Any;
+    const ins = s.inspection() as Inspection;
     const strokes: Stroke[] = [];
-    for (const o of ins.document.pages[0].objects as Any[]) {
+    for (const o of ins.document.pages[0].objects) {
       const c = o.content?.Stroke;
       if (!c) continue;
       const R = c.rendering, argb = Number(R.style.color_argb) >>> 0;
       strokes.push({ pen: String(R.pen_name).split(".").pop()!, settings: String(R.advanced_settings ?? ""), size: Number(R.style.pen_size),
-        rgb: [(argb >>> 16) & 255, (argb >>> 8) & 255, argb & 255], pts: c.points.map((p: Any) => [p.x, p.y]), pr: c.pressures });
+        rgb: [(argb >>> 16) & 255, (argb >>> 8) & 255, argb & 255], pts: c.points.map((p) => [p.x, p.y]), pr: c.pressures });
     }
     return { strokes, pageW: ins.layout.pages[0].page?.width ?? ins.layout.pages[0].width };
   } finally { s.free(); }

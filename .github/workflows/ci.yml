@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,7 +17,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
       - name: Get gitleaks (pinned, checksum-verified)
         run: node scripts/get-gitleaks.mjs
       - name: Scan history and tree for secrets / personal data
@@ -28,11 +29,32 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
       - run: npm ci
+      - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
       - name: Verify main.js embeds exactly the pinned renderer
         run: npm run verify
       - run: npm test
 
+  # Rebuild on another OS and compare with the released main.js (when that version is released).
+  reproduce:
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - run: npm run build
+      - name: Compare with the release asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(node -p 'require("./manifest.json").version')
+          gh release download "$v" --pattern main.js --dir released
+          sha256sum main.js released/main.js
+          cmp main.js released/main.js && echo "main.js $v reproduced byte for byte"

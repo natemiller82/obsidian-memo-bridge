@@ -279,12 +279,12 @@ export class RecognitionRunner {
     if (ours) {
       // Body (section, embed alt) as text; frontmatter through the host's own frontmatter API.
       // Then record the hash of the note as it now is on disk, so it stays "ours" for later updates.
-      await vault.write(ns!.md_path, applyBody(current!, pages, run, { altInEmbed: s.altInEmbed, imageFiles: pageEmbeds(current!, rev.name) }));
+      await vault.write(ns.md_path, applyBody(current, pages, run, { altInEmbed: s.altInEmbed, imageFiles: pageEmbeds(current, rev.name) }));
       const fields = recognitionFields(pages, run);
-      await vault.processFrontMatter(ns!.md_path, (fm) => { Object.assign(fm, fields); });
-      const now = await vault.read(ns!.md_path);
+      await vault.processFrontMatter(ns.md_path, (fm) => { Object.assign(fm, fields); });
+      const now = await vault.read(ns.md_path);
       if (now !== null) state.updateMdHash(rev.note_id, sha256(now));
-      return ns!.md_path;
+      return ns.md_path;
     }
     const p = join(dirOf(rev.md_path), `${rev.name}.enrich-${ENRICHER}.md`);
     await vault.write(p, sidecarMarkdown(rev.name, rev.note_id, pages, run));

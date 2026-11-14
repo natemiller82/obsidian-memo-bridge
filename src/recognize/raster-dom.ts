@@ -1,4 +1,4 @@
-// Rasterising inside Obsidian (Chromium canvas). The eval harness uses eval/raster-node.ts.
+// Rasterising inside Obsidian (Chromium canvas). Tests use test/raster-node.ts.
 import type { Rgba } from "./image";
 import type { Raster } from "./inputs";
 
@@ -14,7 +14,7 @@ async function loadImage(blob: Blob): Promise<HTMLImageElement> {
 }
 
 function pixels(img: CanvasImageSource, w: number, h: number): Rgba {
-  const c = document.createElement("canvas");
+  const c = createEl("canvas");
   c.width = w; c.height = h;
   const ctx = c.getContext("2d", { willReadFrequently: true })!;
   ctx.fillStyle = "#ffffff";

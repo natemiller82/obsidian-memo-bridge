@@ -245,7 +245,7 @@ export class SyncEngine {
         body: (att) => {
           const blocks: string[] = [];
           pages.forEach((p, i) => {
-            const img = pageFiles[i] ? embed(att.replace("{}", pageFiles[i]!)) : null;
+            const img = pageFiles[i] ? embed(att.replace("{}", pageFiles[i])) : null;
             const t = p.text?.markdown ?? null;
             // Samsung puts text below handwriting by preceding it with blank lines.
             if (t && p.text!.leadingBlankLines === 0) { blocks.push(t); if (img) blocks.push(img); }
@@ -525,7 +525,7 @@ export interface DryRunReport {
 }
 
 /** Let the UI thread run between notes (styling a page can take up to a second). */
-const yieldToUi = () => new Promise<void>((r) => setTimeout(r, 0));
+const yieldToUi = () => new Promise<void>((r) => window.setTimeout(r, 0));
 
 function atomicWrite(p: string, data: Uint8Array) {
   const tmp = `${p}.${process.pid}.tmp`;

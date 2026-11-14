@@ -160,7 +160,40 @@ abstract class Base implements Provider {
   }
 }
 
-type J = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+// Response shapes, as far as this module reads them. Everything is optional: a provider's answer
+// is untrusted input, and anything typed unknown is checked before use.
+interface OllamaShow { capabilities?: unknown }
+interface OllamaTags { models?: { name: string; details?: { parameter_size?: string } }[] }
+interface OllamaChat { message?: { content?: string }; prompt_eval_count?: number; eval_count?: number }
+interface AnthropicModels {
+  data?: { id: string; display_name?: string; capabilities?: { image_input?: { supported?: boolean } } }[];
+  has_more?: boolean; last_id?: string;
+}
+interface AnthropicMessage {
+  stop_reason?: string; content?: { type: string; text?: string }[];
+  usage?: { input_tokens?: number; output_tokens?: number };
+}
+interface IdList { data?: { id: string }[] }
+interface OpenAIResponse {
+  status?: string; incomplete_details?: { reason?: string };
+  output?: { type: string; content?: { type: string; text?: string }[] }[];
+  usage?: { input_tokens?: number; output_tokens?: number };
+}
+interface GeminiModels { models?: { name: string; displayName?: string; supportedGenerationMethods?: string[] }[]; nextPageToken?: string }
+interface GeminiGenerate {
+  promptFeedback?: { blockReason?: string };
+  candidates?: { finishReason?: string; content?: { parts?: { text?: unknown; thought?: boolean }[] } }[];
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
+}
+interface CompatibleModels { data?: { id: string; architecture?: { input_modalities?: unknown }; capabilities?: { vision?: unknown } }[] }
+interface CompatibleChat {
+  choices?: { message?: { refusal?: unknown; content?: unknown } }[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+}
+
+/** The text of a content part, if it has one. */
+const partText = (c: unknown): string =>
+  c !== null && typeof c === "object" && typeof (c as { text?: unknown }).text === "string" ? (c as { text: string }).text : "";
 
 class OllamaProvider extends Base {
   readonly kind = "ollama" as const;
@@ -170,16 +203,17 @@ class OllamaProvider extends Base {
 
   private async capabilities(model: string): Promise<string[]> {
     if (!this.caps.has(model)) {
-      const r = (await this.send(`${this.url}/api/show`, "POST", {}, { model })) as J;
-      this.caps.set(model, Array.isArray(r.capabilities) ? r.capabilities : []);
+      const r = (await this.send(`${this.url}/api/show`, "POST", {}, { model })) as OllamaShow;
+      const caps: unknown[] = Array.isArray(r.capabilities) ? r.capabilities : [];
+      this.caps.set(model, caps.filter((c): c is string => typeof c === "string"));
     }
     return this.caps.get(model)!;
   }
 
   async listModels(): Promise<ModelInfo[]> {
-    const r = (await this.send(`${this.url}/api/tags`, "GET", {})) as J;
+    const r = (await this.send(`${this.url}/api/tags`, "GET", {})) as OllamaTags;
     const out: ModelInfo[] = [];
-    for (const m of (r.models ?? []) as J[]) {
+    for (const m of r.models ?? []) {
       const caps = await this.capabilities(m.name).catch(() => [] as string[]);
       // Thinking models (e.g. plain qwen3-vl tags) keep thinking even with think:false and can run
       // out of tokens before answering; the -instruct variants answer directly.
@@ -197,7 +231,7 @@ class OllamaProvider extends Base {
       model, stream: false, format: RESULT_SCHEMA, options: { temperature: 0, num_predict: 4096 },   // bounded like max_tokens elsewhere
       ...(caps.includes("thinking") ? { think: false } : {}),
       messages: [{ role: "system", content: prompt.system }, { role: "user", content: prompt.user, images: [b64(png)] }],
-    })) as J;
+    })) as OllamaChat;
     return this.answer(String(r.message?.content ?? ""), { inputTokens: r.prompt_eval_count ?? null, outputTokens: r.eval_count ?? null }, t0);
   }
 
@@ -206,7 +240,7 @@ class OllamaProvider extends Base {
     const r = (await this.send(`${this.url}/api/chat`, "POST", {}, {
       model, stream: false, options: { temperature: 0, num_predict: 4096 },
       messages: [{ role: "user", content: "Text Recognition:", images: [b64(png)] }],   // the OCR models' own task prompt
-    })) as J;
+    })) as OllamaChat;
     return { text: cleanOcr(String(r.message?.content ?? "")), usage: { inputTokens: r.prompt_eval_count ?? null, outputTokens: r.eval_count ?? null }, ms: Date.now() - t0 };
   }
 }
@@ -221,8 +255,8 @@ class AnthropicProvider extends Base {
     const out: ModelInfo[] = [];
     let after: string | null = null;
     for (let page = 0; page < 10; page++) {
-      const r = (await this.send(`${this.url}/v1/models?limit=100${after ? `&after_id=${encodeURIComponent(after)}` : ""}`, "GET", this.headers())) as J;
-      for (const m of (r.data ?? []) as J[]) out.push({ id: m.id, vision: m.capabilities?.image_input?.supported ?? null, note: m.display_name });
+      const r = (await this.send(`${this.url}/v1/models?limit=100${after ? `&after_id=${encodeURIComponent(after)}` : ""}`, "GET", this.headers())) as AnthropicModels;
+      for (const m of r.data ?? []) out.push({ id: m.id, vision: m.capabilities?.image_input?.supported ?? null, note: m.display_name });
       if (!r.has_more || !r.last_id) break;
       after = r.last_id;
     }
@@ -238,10 +272,10 @@ class AnthropicProvider extends Base {
         { type: "text", text: prompt.user },
       ] }],
       output_config: { format: { type: "json_schema", schema: RESULT_SCHEMA } },
-    })) as J;
+    })) as AnthropicMessage;
     if (r.stop_reason === "refusal") throw new ProviderError("the model refused this page", "fail");
     if (r.stop_reason === "max_tokens") throw new ProviderError("answer cut off (max_tokens)", "fail");
-    const text = ((r.content ?? []) as J[]).filter((c) => c.type === "text").map((c) => c.text).join("");
+    const text = (r.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
     return this.answer(text, { inputTokens: r.usage?.input_tokens ?? null, outputTokens: r.usage?.output_tokens ?? null }, t0);
   }
 }
@@ -253,9 +287,9 @@ class OpenAIProvider extends Base {
   private headers() { return { authorization: `Bearer ${this.requireKey()}` }; }
 
   async listModels(): Promise<ModelInfo[]> {
-    const r = (await this.send(`${this.url}/models`, "GET", this.headers())) as J;
+    const r = (await this.send(`${this.url}/models`, "GET", this.headers())) as IdList;
     // The list has no capability field; OpenAI says all its latest models accept images.
-    return ((r.data ?? []) as J[]).map((m) => ({ id: m.id, vision: null }));
+    return (r.data ?? []).map((m) => ({ id: m.id, vision: null }));
   }
 
   async recognize(png: Uint8Array, prompt: Prompt): Promise<PageAnswer> {
@@ -267,14 +301,14 @@ class OpenAIProvider extends Base {
         { type: "input_image", image_url: `data:image/png;base64,${b64(png)}`, detail: "high" },
       ] }],
       text: { format: { type: "json_schema", name: "page_transcription", strict: true, schema: RESULT_SCHEMA } },
-    })) as J;
+    })) as OpenAIResponse;
     if (r.status === "incomplete") throw new ProviderError(`answer incomplete: ${r.incomplete_details?.reason ?? "unknown"}`, "fail");
     let text = "";
-    for (const o of (r.output ?? []) as J[]) {
+    for (const o of r.output ?? []) {
       if (o.type !== "message") continue;
-      for (const c of (o.content ?? []) as J[]) {
+      for (const c of o.content ?? []) {
         if (c.type === "refusal") throw new ProviderError("the model refused this page", "fail");
-        if (c.type === "output_text") text += c.text;
+        if (c.type === "output_text") text += c.text ?? "";
       }
     }
     return this.answer(text, { inputTokens: r.usage?.input_tokens ?? null, outputTokens: r.usage?.output_tokens ?? null }, t0);
@@ -291,10 +325,10 @@ class GeminiProvider extends Base {
     const out: ModelInfo[] = [];
     let token = "";
     for (let page = 0; page < 10; page++) {
-      const r = (await this.send(`${this.url}/models?pageSize=1000${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`, "GET", this.headers())) as J;
-      for (const m of (r.models ?? []) as J[])
+      const r = (await this.send(`${this.url}/models?pageSize=1000${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`, "GET", this.headers())) as GeminiModels;
+      for (const m of r.models ?? [])
         if ((m.supportedGenerationMethods ?? []).includes("generateContent"))
-          out.push({ id: String(m.name).replace(/^models\//, ""), vision: null, note: m.displayName });
+          out.push({ id: m.name.replace(/^models\//, ""), vision: null, note: m.displayName });
       if (!r.nextPageToken) break;
       token = r.nextPageToken;
     }
@@ -307,13 +341,13 @@ class GeminiProvider extends Base {
       systemInstruction: { parts: [{ text: prompt.system }] },
       contents: [{ role: "user", parts: [{ inlineData: { mimeType: "image/png", data: b64(png) } }, { text: prompt.user }] }],
       generationConfig: { responseMimeType: "application/json", responseJsonSchema: RESULT_SCHEMA, temperature: 0 },
-    })) as J;
+    })) as GeminiGenerate;
     if (r.promptFeedback?.blockReason) throw new ProviderError(`blocked: ${r.promptFeedback.blockReason}`, "fail");
-    const c = (r.candidates ?? [])[0] as J | undefined;
+    const c = r.candidates?.[0];
     if (!c) throw new ProviderError("no answer", "fail");
     if (c.finishReason && !["STOP", "FINISH_REASON_UNSPECIFIED"].includes(c.finishReason))
       throw new ProviderError(`answer stopped: ${c.finishReason}`, "fail");
-    const text = ((c.content?.parts ?? []) as J[]).filter((p) => !p.thought && typeof p.text === "string").map((p) => p.text).join("");
+    const text = (c.content?.parts ?? []).filter((p) => !p.thought).map(partText).join("");
     const u = r.usageMetadata ?? {};
     return this.answer(text, { inputTokens: u.promptTokenCount ?? null, outputTokens: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0) || null }, t0);
   }
@@ -327,10 +361,11 @@ class CompatibleProvider extends Base {
   private headers(): Record<string, string> { return this.cfg.apiKey ? { authorization: `Bearer ${this.cfg.apiKey}` } : {}; }
 
   async listModels(): Promise<ModelInfo[]> {
-    const r = (await this.send(`${this.url}/models`, "GET", this.headers())) as J;
-    return ((r.data ?? []) as J[]).map((m) => {
+    const r = (await this.send(`${this.url}/models`, "GET", this.headers())) as CompatibleModels;
+    return (r.data ?? []).map((m) => {
       const mods = m.architecture?.input_modalities;                    // OpenRouter
-      const vision = Array.isArray(mods) ? mods.includes("image") : typeof m.capabilities?.vision === "boolean" ? m.capabilities.vision : null;
+      const v = m.capabilities?.vision;
+      const vision = Array.isArray(mods) ? (mods as unknown[]).includes("image") : typeof v === "boolean" ? v : null;
       return { id: m.id, vision };
     });
   }
@@ -345,18 +380,18 @@ class CompatibleProvider extends Base {
       ],
       ...(schema ? { response_format: { type: "json_schema", json_schema: { name: "page_transcription", strict: true, schema: RESULT_SCHEMA } } } : {}),
     });
-    let r: J;
+    let r: CompatibleChat;
     try {
-      r = (await this.send(`${this.url}/chat/completions`, "POST", this.headers(), body(!this.noSchema))) as J;
+      r = (await this.send(`${this.url}/chat/completions`, "POST", this.headers(), body(!this.noSchema))) as CompatibleChat;
     } catch (e) {
       if (!(e instanceof ProviderError) || e.status !== 400 || this.noSchema || !/response_format|json_schema|structured/i.test(e.message)) throw e;
       this.noSchema = true;
-      r = (await this.send(`${this.url}/chat/completions`, "POST", this.headers(), body(false))) as J;
+      r = (await this.send(`${this.url}/chat/completions`, "POST", this.headers(), body(false))) as CompatibleChat;
     }
-    const msg = (r.choices ?? [])[0]?.message as J | undefined;
+    const msg = r.choices?.[0]?.message;
     if (msg?.refusal) throw new ProviderError("the model refused this page", "fail");
     const content = msg?.content;
-    const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((c: J) => c.text ?? "").join("") : "";
+    const text = typeof content === "string" ? content : Array.isArray(content) ? (content as unknown[]).map(partText).join("") : "";
     return this.answer(text, { inputTokens: r.usage?.prompt_tokens ?? null, outputTokens: r.usage?.completion_tokens ?? null }, t0);
   }
 }

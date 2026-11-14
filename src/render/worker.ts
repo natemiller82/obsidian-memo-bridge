@@ -3,12 +3,15 @@
 import init, * as sdocx from "@twango/sdocx";
 import { FormatError, renderDocument } from "./core";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const self: { onmessage: ((ev: MessageEvent) => void) | null; postMessage(msg: unknown): void };
 let ready: Promise<unknown> | null = null;
 
-self.onmessage = async (ev: MessageEvent) => {
-  const m = ev.data;
+/** What the plugin sends this worker. */
+type Incoming = { type: "init"; wasm: Uint8Array } | { type: "render"; id: number; bytes: Uint8Array };
+
+self.onmessage = (ev: MessageEvent) => { void handle(ev.data as Incoming); };
+
+async function handle(m: Incoming): Promise<void> {
   if (m.type === "init") {
     ready = init({ module_or_path: m.wasm });
     try {
@@ -31,4 +34,4 @@ self.onmessage = async (ev: MessageEvent) => {
       });
     }
   }
-};
+}

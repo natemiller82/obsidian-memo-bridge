@@ -27,7 +27,8 @@ and Samsung's folders are mirrored under one vault folder.
 
 - **Windows 10 or 11** with the **Samsung Notes** app from the Microsoft Store, signed in to your
   Samsung account and syncing. Notes reach the PC through Samsung's background process
-  `SamsungNotesSysTray`; the Samsung Notes window doesn't need to be open.
+  `SamsungNotesSysTray`; the Samsung Notes window doesn't need to be open. If new notes stop
+  arriving, open Samsung Notes once to restart it (the plugin doesn't check for it).
 - **Obsidian desktop 1.11.4 or newer, installed with installer 1.9.12 or newer.** The plugin uses
   the SQLite built into Obsidian's runtime (Electron 37.3 or newer) and Obsidian's secret storage
   for API keys. The app updates itself, but the *installer* (which carries Electron) does not:
@@ -81,7 +82,6 @@ attention (hover for details, click to sync now).
 | Only these / Skip these Samsung folders | (empty) | One per line; subfolders included. |
 | Ink scale | 2.6 | Thickness for the one fountain-pen setting the renderer draws too thin. Other pens use a built-in table. |
 | Poll interval | 30 s | |
-| Check Samsung's sync process | on | See below. |
 | Backfill batch size | 25 | |
 
 ## Text recognition and alt text (optional, off by default)
@@ -160,8 +160,7 @@ You should know exactly what a plugin touches. Memo Bridge:
     `state.sqlite`
   - `snap\`: the working copy of Samsung's database
   - `logs\plugin.log` and `reports\` (backfill dry runs)
-- **Starts one program:** Windows' `tasklist`, every 10 minutes, to check that
-  `SamsungNotesSysTray` is running. Turn **Check Samsung's sync process** off and it starts nothing.
+- **Starts no programs** and runs no shell commands.
 - **Makes no network requests unless you turn on text recognition,** and then only to the provider
   you chose (see above): to your own computer for Ollama, or to that company's API for an online
   provider. It never collects telemetry.
@@ -200,6 +199,7 @@ This project was built with AI assistance under my direction and review.
 
 ```powershell
 npm ci
+npm run lint        # Obsidian's own lint rules (eslint-plugin-obsidianmd)
 npm run typecheck
 npm test            # tests use synthetic fixtures only
 npm run build       # -> main.js (refuses anything but the pinned renderer)
@@ -222,27 +222,6 @@ it extends the repo rules in `.gitleaks.toml`. CI runs the same scan.
 
 Tests run on synthetic fixtures in `test/fixtures`: throwaway notes with every identifier
 replaced. Never add real notes, note ids, thumbnails, renders, databases or logs to the repo.
-
-### Recognition evaluation harness
-
-Compares providers, models and prompt variants on your own notes. Everything it writes goes to
-`local/eval/`, which is gitignored.
-
-```powershell
-npm run eval -- pick                      # choose ~20 notes covering the pen types and note kinds; writes their recognition images
-npm run eval -- images --variant final       # rebuild the set's images with the current code (local/eval/variants/final)
-npm run eval -- run --provider ollama --model qwen3-vl:8b-instruct [--hint] [--mode json|ocr] [--images final] [--missing]
-npm run eval -- review                    # local/eval/review.html: correct the drafts once (saves p<n>.truth.txt)
-npm run eval -- report                    # local/eval/report.md: CER/WER against your corrections, agreement, speed, cost; OCR + JSON runs also combined as two-model setups
-```
-
-One run at a time: a second run refuses to start while one is active, and the Ollama model is unloaded when a run ends or is stopped. `--missing` resumes a stopped run.
-
-`--hint` adds the context hint from `local/eval/hint.txt` (gitignored, since it describes your own notes).
-
-Online providers need `--allow-hosted` and a key in an environment variable (`MB_ANTHROPIC_KEY`,
-`MB_OPENAI_KEY` or `MB_GEMINI_KEY`); without the flag the harness refuses to send anything off
-your computer. Look through the chosen notes in `review.html` before any online run.
 
 ## License
 

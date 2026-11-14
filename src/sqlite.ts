@@ -11,9 +11,8 @@ let mod: typeof NodeSqlite | null | undefined;
 export function loadSqlite(): typeof NodeSqlite | null {
   if (mod !== undefined) return mod;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const req: NodeRequire = (globalThis as { require?: NodeRequire }).require ?? require;
-    mod = req("node:sqlite") as typeof NodeSqlite;
+    // Obsidian's (CommonJS) require; the eval harness provides one too. node:sqlite is external.
+    mod = require("node:sqlite") as typeof NodeSqlite;
   } catch {
     mod = null;
   }

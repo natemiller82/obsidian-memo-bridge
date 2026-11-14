@@ -1,7 +1,7 @@
 {
   "id": "memo-bridge",
   "name": "Memo Bridge",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "minAppVersion": "1.11.4",
   "description": "Import notes from the Samsung Notes app for Windows into your vault. Handwriting becomes SVG images and typed text becomes Markdown. Optional handwriting transcription with a local or online AI model.",
   "author": "Nate Miller",

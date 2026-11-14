@@ -2,7 +2,7 @@
 
 `main.js` contains three things: the plugin code, a small render worker, and the
 [sdocx](https://github.com/twangodev/sdocx) WebAssembly renderer. Obsidian plugins can only ship
-`main.js`, `manifest.json` and `styles.css`, so the renderer is embedded as one gzipped,
+`main.js`, `manifest.json` and `styles.css`, so the renderer is embedded as one Brotli-compressed,
 base64-encoded blob. Everything below lets anyone check that this blob is exactly the published
 renderer and nothing else.
 
@@ -13,7 +13,7 @@ renderer and nothing else.
 | Renderer package | `package.json` (exact version), `package-lock.json` (npm `integrity` hash of the tarball) | `@twango/sdocx` 1.1.0 |
 | Renderer WebAssembly | `renderer-pin.json` | `sdocx_bg.wasm`, SHA-256 `39a8219a025957f97fe2729fb7f641750f67040f57119c69fa286b8fe34d65f4` |
 | Build tools | `package-lock.json` | esbuild, TypeScript and the rest at exact versions |
-| Node.js | `.nvmrc`, `engines` | 22 |
+| Node.js | `.nvmrc` (exact), `engines` | 22.23.4: the embedded renderer is Brotli-compressed with Node's built-in zlib, so build with this exact version to get the same bytes |
 
 `npm run build` **refuses to build** if the installed `@twango/sdocx` isn't the pinned version, or
 if its `sdocx_bg.wasm` doesn't have the pinned SHA-256.
@@ -38,7 +38,7 @@ You don't need to build anything to check a `main.js` you downloaded:
 node scripts/verify-main.mjs path\to\downloaded\main.js
 ```
 
-The script finds the single embedded gzip stream (there must be exactly one), decompresses it,
+The script finds the single large embedded blob (there must be exactly one), decompresses it (Brotli),
 checks that it's a WebAssembly module, and compares its SHA-256 with `renderer-pin.json`. You can
 also compare that hash with the file published on npm:
 

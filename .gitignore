@@ -9,8 +9,9 @@ data.json
 .gitleaks.local.toml
 tools/
 test/out/
-eval/.out/
 .vitest/
 .claude/
-# your own notes for the recognition eval harness: never commit
+# release build check (CI)
+released/
+# your own notes for anything local: never commit
 local/

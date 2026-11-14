@@ -1,5 +1,5 @@
-// HTTP for recognition providers, injectable: Obsidian's requestUrl in the plugin, fetch in the
-// eval harness (eval/http-node.ts), recorded responses in tests. Secrets never leave this layer in readable form:
+// HTTP for recognition providers, injectable: Obsidian's requestUrl in the plugin, fetch in
+// development tools, recorded responses in tests. Secrets never leave this layer in readable form:
 // anything that describes a request (logs, errors, recordings) goes through redact()/scrub().
 
 export interface HttpRequest { url: string; method: "GET" | "POST"; headers: Record<string, string>; body?: string; timeoutMs?: number }
@@ -22,7 +22,7 @@ export function redact(headers: Record<string, string>): Record<string, string> 
 export function scrub(text: string, ...secrets: (string | null | undefined)[]): string {
   let t = text;
   for (const s of secrets) if (s && s.length >= 8) t = t.split(s).join("[redacted]");
-  return t.replace(/(Bearer\s+)[A-Za-z0-9._\-]{8,}/g, "$1[redacted]");
+  return t.replace(/(Bearer\s+)[A-Za-z0-9._-]{8,}/g, "$1[redacted]");
 }
 
 export function header(h: Record<string, string>, name: string): string | undefined {

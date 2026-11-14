@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { nodeRaster } from "../eval/raster-node";
+import { nodeRaster } from "./raster-node";
 import { applyToNote, isPrivate, sectionMarkdown, setFrontmatter, type PageOutput, type RunInfo } from "../src/recognize/output";
 import type { PageResult, Prompt } from "../src/recognize/prompt";
 import { ProviderError, type PageAnswer, type Provider, type ProviderKind, type TextAnswer } from "../src/recognize/providers";

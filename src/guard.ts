@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import { execFile } from "node:child_process";
 
 /**
  * Is the Python reference bridge running? It holds Windows byte-range locks on
@@ -22,17 +21,4 @@ export function pythonBridgeRunning(lockFiles: string[]): boolean {
     }
   }
   return false;
-}
-
-/**
- * Is Samsung's background sync process (SamsungNotesSysTray) running?
- * This is the only place the plugin starts a process (tasklist), and only when the
- * "Check Samsung sync process" setting is on. Resolves null if it can't tell.
- */
-export function samsungSyncRunning(): Promise<boolean | null> {
-  return new Promise((resolve) => {
-    execFile("tasklist", ["/FI", "IMAGENAME eq SamsungNotesSysTray.exe", "/NH"],
-      { windowsHide: true, timeout: 10_000 },
-      (err, stdout) => resolve(err ? null : /SamsungNotesSysTray/i.test(stdout)));
-  });
 }

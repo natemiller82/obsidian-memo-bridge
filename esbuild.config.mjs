@@ -1,9 +1,9 @@
 // Builds main.js: the plugin, an embedded render-worker bundle (as a string) and the
-// sdocx WebAssembly module (gzipped, inlined once). Obsidian releases ship only
+// sdocx WebAssembly module (Brotli-compressed, inlined once). Obsidian releases ship only
 // main.js / manifest.json / styles.css, so everything must live in main.js.
 import esbuild from "esbuild";
 import { readFileSync, writeFileSync, statSync } from "node:fs";
-import { gzipSync } from "node:zlib";
+import { brotliCompressSync, constants as zc } from "node:zlib";
 import { createRequire } from "node:module";
 import { builtinModules } from "node:module";
 
@@ -42,8 +42,14 @@ const virtual = {
     build.onLoad({ filter: /.*/, namespace: "mb" }, (a) => {
       if (a.path === "virtual:memo-bridge/worker-source")
         return { contents: `export default ${JSON.stringify(workerSource)};`, loader: "js" };
-      if (a.path === "virtual:memo-bridge/sdocx-wasm-gz")
-        return { contents: gzipSync(readFileSync(wasmPath), { level: 9 }), loader: "binary" };
+      if (a.path === "virtual:memo-bridge/sdocx-wasm-br") {
+        // Brotli at maximum settings: about two thirds of gzip's size, and deterministic for a
+        // given Node (zlib) version, so the build stays reproducible.
+        const wasm = readFileSync(wasmPath);
+        const contents = brotliCompressSync(wasm, { params: {
+          [zc.BROTLI_PARAM_QUALITY]: 11, [zc.BROTLI_PARAM_LGWIN]: 24, [zc.BROTLI_PARAM_SIZE_HINT]: wasm.length } });
+        return { contents, loader: "binary" };
+      }
       return null;
     });
   },

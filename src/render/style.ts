@@ -1,7 +1,7 @@
 // Display post-process ("variant B"): per-pen corrections, crop to the ink, rounded
 // card in the page colour, and size reduction (merge round-capped segments into
 // polylines). Operates on sdocx's raw SVG; the raw SVG itself is kept elsewhere.
-import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
+import { DOMParser, XMLSerializer, type Document as XDocument, type Element as XElement, type Node as XNode } from "@xmldom/xmldom";
 import type { StrokeInfo } from "./core";
 import { correctionFor, isIdentity, NO_CORRECTION, PEN_RULES, type Drawn, type PenRule } from "./pens";
 
@@ -9,8 +9,9 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const S_ATTR = "data-mb-s";   // index of the stroke an element was drawn for
 const O_ATTR = "data-mb-o";   // opacity to apply to the element's group
 
-// xmldom's DOM types differ slightly from lib.dom's; keep them loose here.
-type El = any; // eslint-disable-line @typescript-eslint/no-explicit-any
+type El = XElement;
+const ELEMENT_NODE = 1;
+const isEl = (n: XNode | null): n is El => !!n && n.nodeType === ELEMENT_NODE;
 
 export interface StyleOptions {
   inkScale: number;
@@ -35,23 +36,23 @@ export interface StyledPage { svg: string; inkElements: number; corrected: numbe
 const INK = new Set(["line", "polyline", "polygon", "path", "circle", "ellipse", "rect", "image"]);
 const NUM = /-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?/g;
 
-const elements = (n: El): El[] => {
+const elements = (n: XNode): El[] => {
   const out: El[] = [];
-  for (let c = n.firstChild; c; c = c.nextSibling) if (c.nodeType === 1) out.push(c);
+  for (let c = n.firstChild; c; c = c.nextSibling) if (isEl(c)) out.push(c);
   return out;
 };
 const name = (e: El): string => e.localName ?? String(e.tagName).replace(/^.*:/, "");
 const f2 = (v: number) => v.toFixed(2);
 
-function descendants(root: El): El[] {
+function descendants(root: XNode): El[] {
   const out: El[] = [];
-  const rec = (n: El) => { for (const c of elements(n)) { out.push(c); rec(c); } };
+  const rec = (n: XNode) => { for (const c of elements(n)) { out.push(c); rec(c); } };
   rec(root);
   return out;
 }
 
 function inDefs(e: El): boolean {
-  for (let p = e.parentNode; p && p.nodeType === 1; p = p.parentNode) {
+  for (let p = e.parentNode; isEl(p); p = p.parentNode) {
     const t = name(p);
     if (t === "defs" || t === "clipPath" || t === "mask" || t === "pattern") return true;
   }
@@ -89,10 +90,10 @@ function points(e: El): [number, number][] | null {
 }
 
 function firstPoint(e: El): [number, number] | null {
-  if (name(e) === "line") return [parseFloat(e.getAttribute("x1")), parseFloat(e.getAttribute("y1"))];
+  if (name(e) === "line") return [parseFloat(e.getAttribute("x1") ?? ""), parseFloat(e.getAttribute("y1") ?? "")];
   const src = name(e) === "path" ? e.getAttribute("d") : e.getAttribute("points") ?? e.getAttribute("cx");
   const n = (src ?? "").match(NUM)?.map(Number) ?? [];
-  if (name(e) === "circle") return [parseFloat(e.getAttribute("cx")), parseFloat(e.getAttribute("cy"))];
+  if (name(e) === "circle") return [parseFloat(e.getAttribute("cx") ?? ""), parseFloat(e.getAttribute("cy") ?? "")];
   return n.length >= 2 ? [n[0], n[1]] : null;
 }
 
@@ -154,27 +155,37 @@ function parseStamps(d: string): [number, number, number][] | null {
  * parent's child list on every call, so editing a dense page one node at a time was quadratic
  * (minutes for a page with 150k segments). Appending at the end is O(1).
  */
-function setChildren(parent: El, kids: El[]): void {
+/** xmldom's own linked-list fields, which its public types mark read-only. */
+interface Links {
+  parentNode: XNode | null; previousSibling: XNode | null; nextSibling: XNode | null;
+  firstChild: XNode | null; lastChild: XNode | null;
+  childNodes: { length: number; [i: number]: XNode | undefined };
+}
+const links = (n: XNode) => n as unknown as Links;
+
+function setChildren(parent: XNode, kids: XNode[]): void {
   for (let c = parent.firstChild; c; ) {
     const n = c.nextSibling;
-    c.parentNode = null; c.previousSibling = null; c.nextSibling = null;
+    const l = links(c);
+    l.parentNode = null; l.previousSibling = null; l.nextSibling = null;
     c = n;
   }
-  parent.firstChild = null;
-  parent.lastChild = null;
-  const cn = parent.childNodes;
+  const pl = links(parent);
+  pl.firstChild = null;
+  pl.lastChild = null;
+  const cn = pl.childNodes;
   for (let i = 0; i < cn.length; i++) delete cn[i];
   cn.length = 0;
   for (const k of kids) parent.appendChild(k);
 }
 
 /** Circle-stamp paths -> round-capped segments between overlapping stamp centres. */
-function stampsToLines(doc: El, parent: El): void {
-  const kids: El[] = [];
+function stampsToLines(doc: XDocument, parent: XNode): void {
+  const kids: XNode[] = [];
   let changed = false;
   for (let el = parent.firstChild; el; el = el.nextSibling) {
     kids.push(el);
-    if (el.nodeType !== 1 || name(el) !== "path") continue;
+    if (!isEl(el) || name(el) !== "path") continue;
     const attrs = Array.from(el.attributes as ArrayLike<{ name: string }>).map((a) => a.name);
     if (attrs.some((a) => !["d", "fill", S_ATTR].includes(a))) continue;
     const fill = el.getAttribute("fill");
@@ -214,14 +225,14 @@ const LINE_KEYS = new Set(["x1", "y1", "x2", "y2", "stroke", "stroke-width", "st
  * opaque strokes). Translucent strokes get one group per stroke with group opacity,
  * so a stroke doesn't darken where its own segments overlap (as in Samsung).
  */
-function compactLines(doc: El, parent: El): void {
+function compactLines(doc: XDocument, parent: XNode): void {
   const children = elements(parent);
   if (children.filter((c) => name(c) === "line").length < 2) return;
-  const mergeable = (e: El) => name(e) === "line" && e.getAttribute("stroke-linecap") === "round" && e.getAttribute("stroke") &&
+  const mergeable = (e: El) => name(e) === "line" && e.getAttribute("stroke-linecap") === "round" && !!e.getAttribute("stroke") &&
     Array.from(e.attributes as ArrayLike<{ name: string }>).every((a) => LINE_KEYS.has(a.name)) && !e.firstChild;
   const keyOf = (e: El) => {
     const o = e.getAttribute(O_ATTR) || "";
-    return `${e.getAttribute("stroke")}|${o}|${o ? e.getAttribute(S_ATTR) : ""}`;
+    return `${e.getAttribute("stroke") ?? ""}|${o}|${o ? e.getAttribute(S_ATTR) ?? "" : ""}`;
   };
   const out: El[] = [];
   let i = 0;
@@ -231,7 +242,7 @@ function compactLines(doc: El, parent: El): void {
     const key = keyOf(el);
     const g = doc.createElementNS(SVG_NS, "g");
     g.setAttribute("fill", "none");
-    g.setAttribute("stroke", el.getAttribute("stroke"));
+    g.setAttribute("stroke", el.getAttribute("stroke") ?? "");
     g.setAttribute("stroke-linecap", "round");
     g.setAttribute("stroke-linejoin", "round");
     const op = el.getAttribute(O_ATTR);
@@ -260,8 +271,9 @@ function compactLines(doc: El, parent: El): void {
       const k = ["x1", "y1", "x2", "y2", "stroke-width"].map((a) => c.getAttribute(a)).join(",");
       if (k === prev) continue;              // exact duplicate
       prev = k;
-      const p1 = `${fmt1(+c.getAttribute("x1"))},${fmt1(+c.getAttribute("y1"))}`;
-      const p2 = `${fmt1(+c.getAttribute("x2"))},${fmt1(+c.getAttribute("y2"))}`;
+      const at = (a: string) => +(c.getAttribute(a) ?? "");
+      const p1 = `${fmt1(at("x1"))},${fmt1(at("y1"))}`;
+      const p2 = `${fmt1(at("x2"))},${fmt1(at("y2"))}`;
       const w = c.getAttribute("stroke-width") ?? "1";
       if (pts.length && w === width && pts[pts.length - 1] === p1) {
         if (p2 !== p1) pts.push(p2);
@@ -279,12 +291,13 @@ function compactLines(doc: El, parent: El): void {
 
 /** Returns null when the page has no ink (blank page). */
 export function styleSvg(raw: string, strokes: StrokeInfo[], opts: StyleOptions): StyledPage | null {
-  const doc: El = new DOMParser().parseFromString(raw, "image/svg+xml");
-  const root: El = doc.documentElement;
+  const doc = new DOMParser().parseFromString(raw, "image/svg+xml");
+  const root = doc.documentElement;
+  if (!root) return null;
   const rules = opts.rules ?? PEN_RULES;
 
   if (opts.stripText)
-    for (const t of descendants(root).filter((e) => name(e) === "text")) t.parentNode.removeChild(t);
+    for (const t of descendants(root).filter((e) => name(e) === "text")) t.parentNode?.removeChild(t);
 
   let vb = (root.getAttribute("viewBox") ?? "").split(/[\s,]+/).map(Number);
   if (vb.length !== 4 || !(vb[2] > 0)) vb = [0, 0, parseFloat(root.getAttribute("width") ?? "1080"), parseFloat(root.getAttribute("height") ?? "1527")];
@@ -295,7 +308,7 @@ export function styleSvg(raw: string, strokes: StrokeInfo[], opts: StyleOptions)
   for (const el of elements(root)) {
     if (name(el) === "rect" && el.getAttribute("fill") &&
         parseFloat(el.getAttribute("width") ?? "0") >= pw && parseFloat(el.getAttribute("height") ?? "0") >= ph) {
-      bg = el.getAttribute("fill");
+      bg = el.getAttribute("fill") ?? bg;
       root.removeChild(el);
       break;
     }
@@ -311,7 +324,7 @@ export function styleSvg(raw: string, strokes: StrokeInfo[], opts: StyleOptions)
     // black by default) is page decoration; on a white recognition page it hides the writing.
     const decoration = (e: El) => {
       if (e.getAttribute(S_ATTR) || e.getAttribute("stroke-width")) return false;
-      for (let p = e; p && p.nodeType === 1; p = p.parentNode) {
+      for (let p: XNode | null = e; isEl(p); p = p.parentNode) {
         const f = p.getAttribute("fill");
         if (f) { if (f === "none") return false; break; }
       }
@@ -321,7 +334,7 @@ export function styleSvg(raw: string, strokes: StrokeInfo[], opts: StyleOptions)
       for (const [x, y] of pts) { a = Math.min(a, x); b = Math.min(b, y); c = Math.max(c, x); d = Math.max(d, y); }
       return (c - a) * (d - b) >= 0.2 * pw * ph;
     };
-    for (const e of ink.filter(decoration)) e.parentNode.removeChild(e);
+    for (const e of ink.filter(decoration)) e.parentNode?.removeChild(e);
     ink = descendants(root).filter(isInk);
   }
   if (!ink.length) return null;
@@ -407,7 +420,7 @@ export function styleSvg(raw: string, strokes: StrokeInfo[], opts: StyleOptions)
     card.setAttribute(k, v);
   root.insertBefore(card, root.firstChild);
 
-  for (const p of [root, ...descendants(root)]) if (p.nodeType === 1) compactLines(doc, p);
+  for (const p of [root, ...descendants(root)]) compactLines(doc, p);
   for (const e of descendants(root)) { e.removeAttribute(S_ATTR); e.removeAttribute(O_ATTR); }
   return { svg: new XMLSerializer().serializeToString(doc), inkElements: ink.length, corrected };
 }

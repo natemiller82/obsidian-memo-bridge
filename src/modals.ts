@@ -119,7 +119,7 @@ export class ConfirmModal extends Modal {
 /** One-time notice before a hosted recognition provider is used. */
 export class HostedNoticeModal extends Modal {
   private accepted = false;
-  constructor(app: App, private provider: string, private onAccept: () => void, private onCancel: () => void) { super(app); }
+  constructor(app: App, private provider: string, private onAccept: () => void | Promise<void>, private onCancel: () => void) { super(app); }
   onOpen() {
     this.titleEl.setText(`Send note images to ${this.provider}?`);
     const c = this.contentEl;
@@ -128,7 +128,7 @@ export class HostedNoticeModal extends Modal {
     c.createEl("p", { text: "You can switch to a local provider (Ollama) at any time; then nothing leaves this computer." });
     new Setting(c)
       .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
-      .addButton((b) => b.setButtonText(`Use ${this.provider}`).setCta().onClick(() => { this.accepted = true; this.close(); this.onAccept(); }));
+      .addButton((b) => b.setButtonText(`Use ${this.provider}`).setCta().onClick(() => { this.accepted = true; this.close(); void this.onAccept(); }));
   }
   onClose() { this.contentEl.empty(); if (!this.accepted) this.onCancel(); }
 }

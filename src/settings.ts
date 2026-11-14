@@ -75,10 +75,6 @@ export class MemoBridgeSettingTab extends PluginSettingTab {
         const n = Math.round(Number(v));
         if (n >= 5 && n <= 3600) { s.pollSeconds = n; await save(); }
       }));
-    new Setting(containerEl).setName("Check Samsung's sync process")
-      .setDesc("Warn when SamsungNotesSysTray (which brings notes from your phone to this PC) isn't running. " +
-        "This runs Windows' tasklist every 10 minutes; it is the only program the plugin starts.")
-      .addToggle((t) => t.setValue(s.checkSamsungSync).onChange(async (v) => { s.checkSamsungSync = v; await save(); }));
     new Setting(containerEl).setName("Backfill batch size")
       .addText((t) => t.setValue(String(s.backfillBatchSize)).onChange(async (v) => {
         const n = Math.round(Number(v));

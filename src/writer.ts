@@ -15,7 +15,7 @@ export function idHex(noteId: string): string {
 
 /** Safe file/folder name: no path separators, Obsidian link syntax, or Windows-reserved names. */
 export function sanitizeName(s: string, max = 100): string {
-  let out = s.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/[\\/:*?"<>|#^[\]]/g, " ")
+  let out = Array.from(s, (ch) => { const c = ch.charCodeAt(0); return c < 0x20 || c === 0x7f ? " " : ch; }).join("").replace(/[\\/:*?"<>|#^[\]]/g, " ")
     .replace(/\s+/g, " ").trim().replace(/^[.\s]+|[.\s]+$/g, "");
   if (out.length > max) out = out.slice(0, max).replace(/[.\s]+$/, "");
   if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(out)) out = `_${out}`;

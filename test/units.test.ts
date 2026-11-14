@@ -133,24 +133,3 @@ describe("Python bridge guard", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
-
-describe("eval metrics", async () => {
-  const { agree, cer, cleanOcr, lev, norm, wer } = await import("../eval/metrics");
-  it("edit distance, CER/WER, agreement", () => {
-    expect(lev([..."kitten"], [..."sitting"])).toBe(3);
-    expect(cer("buy milk", "buy milk")).toBe(0);
-    expect(cer("buy mlk", "buy milk")).toBeCloseTo(1 / 8);
-    expect(wer("buy the milk", "buy milk")).toBeCloseTo(1 / 2);
-    expect(cer("Buy milk!", "buy milk", true)).toBe(0);              // loose: case and punctuation ignored
-    expect(norm("call [?]  tomorrow")).toBe("call tomorrow");
-    expect(cer("", "")).toBe(0);
-    expect(cer("invented", "")).toBe(1);                             // text on an empty page is an error
-    expect(agree("A b", "a B.")).toBe(1);
-  });
-  it("OCR-only answers: fences stripped, no letters or digits means no text", () => {
-    expect(cleanOcr("```markdown\n\n```")).toBe("");
-    expect(cleanOcr("→")).toBe("");
-    expect(cleanOcr("```markdown\r\nbuy milk\r\n2 eggs\r\n```")).toBe("buy milk\n2 eggs");
-    expect(cleanOcr("plain text")).toBe("plain text");
-  });
-});

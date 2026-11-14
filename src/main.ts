@@ -11,13 +11,12 @@ import { InlineRenderer, WorkerRenderer, type Renderer } from "./render/renderer
 import { sdocxWasm, workerSource } from "./render/embedded";
 import { SyncEngine, type CycleReport } from "./sync";
 import { DEFAULTS, initialSince, MemoBridgeSettingTab, toSyncConfig, type Settings } from "./settings";
-import { pythonBridgeRunning, samsungSyncRunning } from "./guard";
+import { pythonBridgeRunning } from "./guard";
 import { BackfillModal, ConfirmModal, LogModal } from "./modals";
 import { PEN_TABLE_VERSION } from "./render/pens";
 import { RecognitionController } from "./recognize/controller";
 
 const FAST_POLL_MS = 5_000;
-const SAMSUNG_CHECK_MS = 10 * 60_000;
 const NOTIFY_EVERY_MS = 60 * 60_000;
 
 interface Status {
@@ -44,7 +43,7 @@ export default class MemoBridgePlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
-    this.log = new FileLogger(this.data.logFile, 1_000_000, 5, false, this.settings.debugLog ? "DEBUG" : "INFO");
+    this.log = new FileLogger(this.data.logFile, 1_000_000, 5, this.settings.debugLog ? "DEBUG" : "INFO");
     this.statusEl = this.addStatusBarItem();
     this.statusEl.addClass("memo-bridge-status");
     this.statusEl.onClickEvent(() => void this.syncNow());
@@ -175,10 +174,6 @@ export default class MemoBridgePlugin extends Plugin {
     }
     this.status.synced = this.state.count();
 
-    if (this.settings.checkSamsungSync) {
-      void this.checkSamsungSync();
-      this.registerInterval(window.setInterval(() => { if (this.settings.checkSamsungSync) void this.checkSamsungSync(); }, SAMSUNG_CHECK_MS));
-    }
     this.schedule(0, true);   // catch up on everything that arrived while Obsidian was closed
   }
 
@@ -252,13 +247,6 @@ export default class MemoBridgePlugin extends Plugin {
     if (rep.failed.length) this.setProblem("failed", `${rep.failed.length} note(s) failed to import; see the log`);
     else this.clearProblem("failed");
     this.renderStatus();
-  }
-
-  private async checkSamsungSync() {
-    const running = await samsungSyncRunning();
-    if (running === false)
-      this.setProblem("samsung", "Samsung Notes' sync process (SamsungNotesSysTray) isn't running, so new notes won't reach this PC. Open Samsung Notes once to start it.");
-    else this.clearProblem("samsung");
   }
 
   async togglePause() {
@@ -397,7 +385,7 @@ export default class MemoBridgePlugin extends Plugin {
 
   /** Run a backfill step with the regular loop held off. */
   async exclusive<T>(fn: () => Promise<T>): Promise<T> {
-    while (this.busy) await new Promise((r) => setTimeout(r, 200));
+    while (this.busy) await new Promise((r) => window.setTimeout(r, 200));
     if (pythonBridgeRunning(this.data.pythonLocks)) throw new Error("the Python memo-bridge is running");
     this.busy = true;
     try { return await fn(); } finally { this.busy = false; if (this.state) this.status.synced = this.state.count(); this.renderStatus(); }
@@ -413,7 +401,7 @@ async function rasterizeSvg(svg: string): Promise<Uint8Array | null> {
   try {
     const img = new Image();
     await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error("svg load failed")); img.src = url; });
-    const c = document.createElement("canvas");
+    const c = createEl("canvas");
     c.width = img.naturalWidth || 1080;
     c.height = img.naturalHeight || 1527;
     c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);

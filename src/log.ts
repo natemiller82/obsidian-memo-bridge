@@ -12,14 +12,12 @@ export interface Logger {
 
 /** Appends to a file outside the vault; rotates at 1 MB, keeps 5 old files. */
 export class FileLogger implements Logger {
-  constructor(private file: string, private maxBytes = 1_000_000, private keep = 5, private echo = false,
-              public minLevel: Level = "INFO") {}
+  constructor(private file: string, private maxBytes = 1_000_000, private keep = 5, public minLevel: Level = "INFO") {}
 
   private write(level: Level, msg: string) {
     const order: Level[] = ["DEBUG", "INFO", "WARN", "ERROR"];
     if (order.indexOf(level) < order.indexOf(this.minLevel)) return;
     const line = `${localIso(new Date())} ${level.padEnd(5)} ${msg}\n`;
-    if (this.echo) (level === "ERROR" ? console.error : console.log)(`[memo-bridge] ${line.trimEnd()}`);
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true });
       this.rotate();
@@ -44,7 +42,7 @@ export class FileLogger implements Logger {
   info(m: string) { this.write("INFO", m); }
   warn(m: string) { this.write("WARN", m); }
   error(m: string, err?: unknown) {
-    const detail = err instanceof Error ? `: ${err.message}${err.stack ? `\n${err.stack}` : ""}` : err ? `: ${String(err)}` : "";
+    const detail = err instanceof Error ? `: ${err.message}${err.stack ? `\n${err.stack}` : ""}` : err ? `: ${describe(err)}` : "";
     this.write("ERROR", m + detail);
   }
 }
@@ -54,7 +52,14 @@ export class MemoryLogger implements Logger {
   debug(m: string) { this.lines.push(`DEBUG ${m}`); }
   info(m: string) { this.lines.push(`INFO ${m}`); }
   warn(m: string) { this.lines.push(`WARN ${m}`); }
-  error(m: string, err?: unknown) { this.lines.push(`ERROR ${m}${err ? `: ${err instanceof Error ? err.message : err}` : ""}`); }
+  error(m: string, err?: unknown) { this.lines.push(`ERROR ${m}${err ? `: ${err instanceof Error ? err.message : describe(err)}` : ""}`); }
+}
+
+/** A non-Error thrown value as text. */
+function describe(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") return v.toString();
+  try { return JSON.stringify(v) ?? typeof v; } catch { return typeof v; }
 }
 
 export function localIso(d: Date): string {

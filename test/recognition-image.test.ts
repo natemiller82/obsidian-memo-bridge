@@ -7,7 +7,7 @@ import { encodePng, MAX_EDGE, prepareThumbnail, recognitionInk, recognitionSvg }
 import { styleSvg } from "../src/render/style";
 import { recognitionPages } from "../src/recognize/inputs";
 import { zipStored } from "../src/zip";
-import { nodeRaster } from "../eval/raster-node";
+import { nodeRaster } from "./raster-node";
 import { FIX, ID, sharedRenderer } from "./helpers";
 import { decodePng } from "./png";
 

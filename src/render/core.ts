@@ -39,7 +39,23 @@ export class FormatError extends Error {}
 const hex = (c: { r: number; g: number; b: number }) =>
   "#" + [c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, "0")).join("");
 
-type Any = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+// The parts of sdocx's inspection() result this module reads (the binding returns it untyped).
+interface InsRgb { r: number; g: number; b: number }
+interface InsStroke {
+  rendering?: { pen_name?: string; advanced_settings?: string; style?: { color_argb?: number } };
+  color: InsRgb;
+  pen_width?: number;
+  bbox: { x_min: number; y_min: number; x_max: number; y_max: number };
+}
+interface InsSpan { kind: string; start_utf16: number; end_utf16: number; payload?: number[] }
+interface InsObject { content?: { Stroke?: InsStroke; Element?: { TextBox?: { text?: unknown; spans?: InsSpan[] } } } }
+interface Inspection {
+  layout?: { pages?: { page?: { objects?: InsObject[] } }[] };
+  document?: {
+    metadata?: { media_assets?: { archive_id?: number; name?: string }[] };
+    pages?: { background?: { image_id?: unknown } }[];
+  };
+}
 
 export function renderDocument(mod: typeof Sdocx, bytes: Uint8Array): DocRender {
   let s: Sdocx.DocumentSession;
@@ -49,11 +65,11 @@ export function renderDocument(mod: typeof Sdocx, bytes: Uint8Array): DocRender 
     throw new FormatError(String((e as Error)?.message ?? e).replace(/^Error:\s*/, ""));
   }
   try {
-    const ins = s.inspection() as Any;
+    const ins = s.inspection() as Inspection;
     const pages: PageRender[] = [];
-    const layout: Any[] = ins.layout?.pages ?? [];
+    const layout = ins.layout?.pages ?? [];
     for (let i = 0; i < s.page_count; i++) {
-      const objects: Any[] = layout[i]?.page?.objects ?? [];
+      const objects = layout[i]?.page?.objects ?? [];
       const strokes: StrokeInfo[] = [];
       let text: PageText | null = null;
       for (const o of objects) {
@@ -72,8 +88,8 @@ export function renderDocument(mod: typeof Sdocx, bytes: Uint8Array): DocRender 
         }
         const tb = o.content?.Element?.TextBox;
         if (tb && typeof tb.text === "string" && tb.text.trim()) {
-          const spans: TextSpan[] = (tb.spans ?? []).map((x: Any) => ({
-            kind: String(x.kind), start: x.start_utf16, end: x.end_utf16, payload: Array.from(x.payload ?? []) as number[],
+          const spans: TextSpan[] = (tb.spans ?? []).map((x) => ({
+            kind: String(x.kind), start: x.start_utf16, end: x.end_utf16, payload: Array.from(x.payload ?? []),
           }));
           text = text ? { text: text.text + "\n" + tb.text, spans: text.spans } : { text: tb.text, spans };
         }
@@ -86,9 +102,9 @@ export function renderDocument(mod: typeof Sdocx, bytes: Uint8Array): DocRender 
       }
       pages.push({ index: i, svg, strokes, text });
     }
-    const assets: Any[] = ins.document?.metadata?.media_assets ?? [];
+    const assets = ins.document?.metadata?.media_assets ?? [];
     const backgroundMedia = new Set<string>();
-    for (const p of (ins.document?.pages ?? []) as Any[]) {
+    for (const p of ins.document?.pages ?? []) {
       const id = p?.background?.image_id;
       if (typeof id !== "number") continue;
       const a = assets.find((x) => x.archive_id === id);

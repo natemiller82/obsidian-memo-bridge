@@ -13,7 +13,7 @@ export function formatDryRun(r: DryRunReport): string {
     "By content:", kv(r.byContent),
     "By Samsung folder (import order: oldest folder first):", kv(r.byFolder),
     "",
-    "Not imported, and why:", kv(r.skipped as Record<string, number>),
+    "Not imported, and why:", kv(r.skipped),
     "",
     `Thumbnail fallbacks (sdocx can't render; first page only): ${r.thumbnailFallbacks.length}`,
     ...r.thumbnailFallbacks.slice(0, 200).map((t) => `  ${t.created}  ${t.folder}  ${t.id}`),

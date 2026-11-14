@@ -74,7 +74,7 @@ export function parseResult(text: string): PageResult {
   let o: Record<string, unknown>;
   try { o = JSON.parse(t) as Record<string, unknown>; } catch { throw new InvalidOutput(`not JSON: ${t.slice(0, 80)}`); }
   if (!o || typeof o !== "object") throw new InvalidOutput("not a JSON object");
-  const str = (k: string) => { if (typeof o[k] !== "string") throw new InvalidOutput(`${k} is not a string`); return (o[k] as string); };
+  const str = (k: string) => { if (typeof o[k] !== "string") throw new InvalidOutput(`${k} is not a string`); return o[k]; };
   if (typeof o.has_text !== "boolean") throw new InvalidOutput("has_text is not a boolean");
   const r: PageResult = {
     has_text: o.has_text,

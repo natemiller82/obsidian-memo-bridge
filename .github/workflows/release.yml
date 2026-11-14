@@ -1,0 +1,60 @@
+# Release: on a version tag (x.y.z, no "v"), build main.js from the committed lockfile with the
+# pinned Node version, check it, attest it, and publish the release with main.js, manifest.json
+# and styles.css. Follows Obsidian's "Release your plugin with GitHub Actions" guide.
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Tag matches manifest.json and versions.json
+        run: |
+          tag="$GITHUB_REF_NAME"
+          v=$(node -p 'require("./manifest.json").version')
+          [ "$tag" = "$v" ] || { echo "tag $tag != manifest.json version $v"; exit 1; }
+          node -e 'if (!require("./versions.json")[process.argv[1]]) process.exit(1)' "$tag" || { echo "versions.json has no $tag"; exit 1; }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - name: Verify main.js embeds exactly the pinned renderer
+        run: npm run verify
+      - name: Generate artifact attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          {
+            echo "Built by GitHub Actions from tag \`$tag\` with Node $(node --version) and \`npm ci\`; see BUILD.md to rebuild and compare."
+            echo
+            echo "**Checksums (SHA-256)**"
+            echo
+            echo '```'
+            sha256sum main.js manifest.json styles.css
+            echo '```'
+            echo
+            echo "Check the build provenance: \`gh attestation verify main.js --repo $GITHUB_REPOSITORY\`"
+          } > notes.md
+          gh release create "$tag" --title "$tag" --notes-file notes.md main.js manifest.json styles.css

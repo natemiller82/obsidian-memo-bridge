@@ -53,7 +53,7 @@ export interface NoteSource {
 export class SnapshotError extends Error {}
 
 type Sleep = (ms: number) => Promise<void>;
-const realSleep: Sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const realSleep: Sleep = (ms) => new Promise((r) => window.setTimeout(r, ms));
 
 interface Row {
   UUID: string; CreatedAt: number | null; LastModifiedAt: number | null;
@@ -258,5 +258,5 @@ function walk(dir: string, includeDirs: boolean): string[] {
 
 /** Samsung appends zero-width characters to some built-in folder names. */
 export function cleanName(s: string): string {
-  return s.replace(/[​-‍﻿]/g, "").trim();
+  return s.replace(/[\u200b-\u200d\ufeff]/g, "").trim();
 }

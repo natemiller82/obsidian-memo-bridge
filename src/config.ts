@@ -16,7 +16,6 @@ export interface Settings {
   excludeFolders: string;
   inkScale: number;
   pollSeconds: number;
-  checkSamsungSync: boolean;
   backfillBatchSize: number;
   paused: boolean;
   debugLog: boolean;
@@ -54,7 +53,6 @@ export const DEFAULTS: Settings = {
   excludeFolders: "",
   inkScale: 2.6,
   pollSeconds: 30,
-  checkSamsungSync: true,
   backfillBatchSize: 25,
   paused: false,
   debugLog: false,
@@ -118,7 +116,7 @@ function safe(f: () => number | null): number | null {
 /** First run: take the start date from the Python bridge's config if present, else now. */
 export function initialSince(pythonConfig: string): string {
   try {
-    const raw = JSON.parse(fs.readFileSync(pythonConfig, "utf8"));
+    const raw = JSON.parse(fs.readFileSync(pythonConfig, "utf8")) as { since?: unknown };
     if (typeof raw.since === "string" && !Number.isNaN(Date.parse(raw.since))) return raw.since;
   } catch { /* none */ }
   return new Date().toISOString();
