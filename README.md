@@ -41,13 +41,12 @@ and Samsung's folders are mirrored under one vault folder.
 
 ## Install
 
-Until it is listed in Community plugins:
+In Obsidian: **Settings → Community plugins** → turn on community plugins if asked → **Browse** →
+search for "Memo Bridge" → **Install** → **Enable**.
 
-1. Download `main.js`, `manifest.json` and `styles.css` from the latest
-   [release](../../releases).
-2. Put them in `<your vault>/.obsidian/plugins/memo-bridge/`.
-3. In Obsidian: **Settings → Community plugins** → turn on community plugins if asked →
-   enable **Memo Bridge**.
+**Manual install (alternative):** download `main.js`, `manifest.json` and `styles.css` from the
+latest [release](../../releases), put them in `<your vault>/.obsidian/plugins/memo-bridge/`, then
+enable **Memo Bridge** under **Settings → Community plugins**.
 
 On first start it imports only notes created **from that moment on**. Older notes are imported only
 when you run **Backfill** (below).
