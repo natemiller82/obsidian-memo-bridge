@@ -2,7 +2,7 @@
 // card in the page colour, and size reduction (merge round-capped segments into
 // polylines). Operates on sdocx's raw SVG; the raw SVG itself is kept elsewhere.
 import { DOMParser, XMLSerializer, type Document as XDocument, type Element as XElement, type Node as XNode } from "@xmldom/xmldom";
-import type { StrokeInfo } from "./core";
+import type { Rect, StrokeInfo } from "./core";
 import { correctionFor, isIdentity, NO_CORRECTION, PEN_RULES, type Drawn, type PenRule } from "./pens";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -29,6 +29,8 @@ export interface StyleOptions {
    * than `collapseGap` page units to that height.
    */
   recognition?: { collapseGap: number };
+  /** Stored rectangles of images embedded in the body text (DocRender.inlineImages). */
+  inlineImages?: Rect[];
 }
 
 export interface StyledPage { svg: string; inkElements: number; corrected: number }
@@ -74,8 +76,14 @@ function points(e: El): [number, number][] | null {
       const rx = e.hasAttribute("r") ? a("r") : a("rx"), ry = e.hasAttribute("r") ? a("r") : a("ry");
       return [[a("cx") - rx, a("cy") - ry], [a("cx") + rx, a("cy") + ry]];
     }
-    case "rect": case "image":
+    case "rect":
       return [[a("x"), a("y")], [a("x") + a("width"), a("y") + a("height")]];
+    case "image": {
+      // sdocx positions images with translate() groups; any other transform: can't tell
+      const o = ancestorTranslate(e);
+      if (!o) return null;
+      return [[a("x") + o[0], a("y") + o[1]], [a("x") + a("width") + o[0], a("y") + a("height") + o[1]]];
+    }
     case "path": {
       const d = e.getAttribute("d") ?? "";
       // relative commands (a closing "z" has no coordinates, so it doesn't count)
@@ -314,6 +322,8 @@ export function styleSvg(raw: string, strokes: StrokeInfo[], opts: StyleOptions)
     }
   }
 
+  if (opts.inlineImages?.length) placeInlineImages(root, opts.inlineImages);
+
   const isInk = (e: El) => INK.has(name(e)) && !inDefs(e);
   const drawn = assignStrokes(descendants(root).filter(isInk), strokes);
   for (const p of [root, ...descendants(root)]) stampsToLines(doc, p);
@@ -443,5 +453,57 @@ function shiftY(e: El, dy: number): void {
       const t = e.getAttribute("transform");
       e.setAttribute("transform", `translate(0 ${fmt1(-dy)})${t ? " " + t : ""}`);
     }
+  }
+}
+
+const TRANSLATE = /^\s*translate\(\s*(-?[\d.]+(?:e[-+]?\d+)?)(?:[\s,]+(-?[\d.]+(?:e[-+]?\d+)?))?\s*\)\s*$/i;
+
+/** A translate() transform as [dx, dy]; [0, 0] for none; null for any other transform. */
+function translateOf(e: El): [number, number] | null {
+  const t = e.getAttribute("transform");
+  if (!t) return [0, 0];
+  const m = TRANSLATE.exec(t);
+  return m ? [parseFloat(m[1]), parseFloat(m[2] ?? "0")] : null;
+}
+
+/** Sum of the translates of an element's ancestors; null if any ancestor has another transform. */
+function ancestorTranslate(e: El): [number, number] | null {
+  let x = 0, y = 0;
+  for (let p = e.parentNode; isEl(p); p = p.parentNode) {
+    const t = translateOf(p);
+    if (!t) return null;
+    x += t[0]; y += t[1];
+  }
+  return [x, y];
+}
+
+/**
+ * Images embedded in the body text: sdocx gives the <image> the right rectangle, then wraps it in
+ * text-flow translates that Samsung doesn't apply, so the picture lands offset from the ink drawn
+ * on it. When an image's own rectangle matches one stored in the note, cancel those inner translates
+ * (keeping the flow's page offset, which places later pages) so it sits exactly on that rectangle.
+ * Images that don't match a stored rectangle, or have other transforms, are left as drawn.
+ */
+function placeInlineImages(root: El, rects: Rect[]): void {
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.5;
+  for (const img of descendants(root).filter((e) => name(e) === "image")) {
+    const group = img.parentNode;
+    if (!isEl(group) || group.getAttribute("data-sdocx-object") !== "image") continue;
+    const at = (k: string) => parseFloat(img.getAttribute(k) ?? "NaN");
+    const x = at("x"), y = at("y"), w = at("width"), h = at("height");
+    if (!rects.some((r) => near(r.x0, x) && near(r.y0, y) && near(r.x1 - r.x0, w) && near(r.y1 - r.y0, h))) continue;
+    // ancestors between the image group and the flow group; the last one is the page offset
+    const chain: El[] = [];
+    let flow = false;
+    for (let p = group.parentNode; isEl(p); p = p.parentNode) {
+      if (p.hasAttribute("data-sdocx-flow")) { flow = true; break; }
+      chain.push(p);
+    }
+    if (!flow || !chain.length) continue;
+    const inner = chain.slice(0, -1).map(translateOf);
+    if (inner.some((t) => !t) || !translateOf(group)) continue;
+    const dx = inner.reduce((s2, t) => s2 + t![0], 0), dy = inner.reduce((s2, t) => s2 + t![1], 0);
+    if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) group.removeAttribute("transform");
+    else group.setAttribute("transform", `translate(${f2(-dx)} ${f2(-dy)})`);
   }
 }

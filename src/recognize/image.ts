@@ -3,7 +3,7 @@
 // card colour and screen-off palette never reach the model. Pure functions; rasterising is
 // injected (canvas in Obsidian, resvg/jpeg-js in the eval harness).
 import { deflateSync } from "node:zlib";
-import type { StrokeInfo } from "../render/core";
+import type { Rect, StrokeInfo } from "../render/core";
 import { styleSvg } from "../render/style";
 
 /** Longest edge of the image sent to a provider (no provider downscales below this). */
@@ -34,12 +34,12 @@ const GAP_OF_WIDTH = 0.5;
  * and it also stopped the crop) and shrinks very tall empty gaps, so a sparse note on a long canvas
  * isn't squeezed into a sliver. Measured on the eval set: both help, and other pages are unchanged.
  */
-export function recognitionSvg(raw: string, strokes: StrokeInfo[], inkScale: number, maxEdge = MAX_EDGE): RecognitionSvg | null {
+export function recognitionSvg(raw: string, strokes: StrokeInfo[], inkScale: number, maxEdge = MAX_EDGE, inlineImages: Rect[] = []): RecognitionSvg | null {
   const vb0 = /viewBox="([^"]+)"/.exec(raw)?.[1].split(/[\s,]+/).map(Number);
   const pageW = vb0 && vb0.length === 4 && vb0[2] > 0 ? vb0[2] : 1080;
   const st = styleSvg(raw, strokes, {
     inkScale, padding: 24, radius: 0, stripText: true, recolor: recognitionInk, background: "#ffffff",
-    recognition: { collapseGap: GAP_OF_WIDTH * pageW },
+    recognition: { collapseGap: GAP_OF_WIDTH * pageW }, inlineImages,
   });
   if (!st) return null;
   const vb = /viewBox="([^"]+)"/.exec(st.svg)![1].split(" ").map(Number);

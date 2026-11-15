@@ -187,6 +187,8 @@ note you've edited), and the plugin's own `data.json` (your settings; never API 
   marked `render: thumbnail`; pages after the first are not shown. They can be re-rendered later
   from the backup when the renderer improves.
 - **Page backgrounds** such as the yellow Action memo paper are not reproduced.
+- **Pictures under ink:** pictures inserted in a note's text are placed where Samsung shows them, but
+  rotated, cropped and freely placed pictures may still sit slightly off under ink drawn on them.
 - **Locked notes** are skipped and listed in the log; they are never opened.
 - **Text formatting:** bold, underline and highlight are kept; font size, colour and alignment are
   not.

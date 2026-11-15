@@ -224,7 +224,7 @@ export class SyncEngine {
       const rawSvgs: string[] = [];
       for (const p of doc.pages) {
         const text = textToMarkdown(p.text);
-        const styled = styleSvg(p.svg, p.strokes, { inkScale: this.cfg.inkScale, padding: this.cfg.padding, radius: this.cfg.radius, stripText: !!text });
+        const styled = styleSvg(p.svg, p.strokes, { inkScale: this.cfg.inkScale, padding: this.cfg.padding, radius: this.cfg.radius, stripText: !!text, inlineImages: doc.inlineImages });
         if (!styled && !text) continue;                       // blank page
         pages.push({ svg: styled?.svg ?? null, text });
         rawSvgs.push(p.svg);

@@ -11,8 +11,10 @@ let mod: typeof NodeSqlite | null | undefined;
 export function loadSqlite(): typeof NodeSqlite | null {
   if (mod !== undefined) return mod;
   try {
-    // Obsidian's (CommonJS) require; the eval harness provides one too. node:sqlite is external.
-    mod = require("node:sqlite") as typeof NodeSqlite;
+    // Synchronous, no require(): returns undefined when this runtime has no node:sqlite. Runtimes
+    // too old for getBuiltinModule (before Node 22.3) predate node:sqlite (22.5) as well.
+    const get = (process as { getBuiltinModule?: (id: string) => unknown }).getBuiltinModule;
+    mod = (get?.call(process, "node:sqlite") as typeof NodeSqlite | undefined) ?? null;
   } catch {
     mod = null;
   }

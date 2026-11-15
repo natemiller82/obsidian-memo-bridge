@@ -32,7 +32,7 @@ export async function recognitionPages(rev: Pick<Revision, "render" | "sdocx_pat
     const doc = await renderer.render(new Uint8Array(fs.readFileSync(rev.sdocx_path)), RENDER_TIMEOUT_MS);
     const out: InputPage[] = [];
     for (const [i, p] of doc.pages.entries()) {
-      const r = recognitionSvg(p.svg, p.strokes, inkScale);
+      const r = recognitionSvg(p.svg, p.strokes, inkScale, undefined, doc.inlineImages);
       if (!r) continue;
       const rgba = await raster.svgToRgba(r.svg, r.width, r.height);
       out.push({ page: i + 1, png: encodePng(rgba), w: rgba.w, h: rgba.h, source: "strokes" });

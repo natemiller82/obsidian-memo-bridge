@@ -23,8 +23,17 @@ export interface PageRender {
   text: PageText | null;
 }
 
+/** A rectangle in page units. */
+export interface Rect { x0: number; y0: number; x1: number; y1: number }
+
 export interface DocRender {
   pages: PageRender[];
+  /**
+   * Where Samsung places each image embedded in the note's body text (page units), read from the
+   * note's own data. sdocx draws these images offset by its text-flow transforms; style.ts uses
+   * the stored rectangle to put them back (see local notes on the upstream issue).
+   */
+  inlineImages: Rect[];
   /**
    * Media files (base names, e.g. "0@image0.jpg") that pages use as their paper/template
    * background, such as the yellow Action memo paper. They are not user attachments.
@@ -49,10 +58,15 @@ interface InsStroke {
 }
 interface InsSpan { kind: string; start_utf16: number; end_utf16: number; payload?: number[] }
 interface InsObject { content?: { Stroke?: InsStroke; Element?: { TextBox?: { text?: unknown; spans?: InsSpan[] } } } }
+interface InsObjectSpan { object_type?: string; object_data?: number[]; content?: { Image?: { rotation_degrees?: unknown; crop_rect?: unknown } } }
 interface Inspection {
   layout?: { pages?: { page?: { objects?: InsObject[] } }[] };
   document?: {
-    metadata?: { media_assets?: { archive_id?: number; name?: string }[] };
+    metadata?: {
+      media_assets?: { archive_id?: number; name?: string }[];
+      note_text?: { object_spans?: InsObjectSpan[] };
+      note_title?: { object_spans?: InsObjectSpan[] };
+    };
     pages?: { background?: { image_id?: unknown } }[];
   };
 }
@@ -110,8 +124,30 @@ export function renderDocument(mod: typeof Sdocx, bytes: Uint8Array): DocRender 
       const a = assets.find((x) => x.archive_id === id);
       if (a?.name) backgroundMedia.add(String(a.name).split("/").pop()!);
     }
-    return { pages, backgroundMedia: [...backgroundMedia] };
+    const meta = ins.document?.metadata;
+    const inlineImages = [...(meta?.note_title?.object_spans ?? []), ...(meta?.note_text?.object_spans ?? [])]
+      .map(inlineImageRect).filter((r): r is Rect => r !== null);
+    return { pages, backgroundMedia: [...backgroundMedia], inlineImages };
   } finally {
     s.free();
   }
+}
+
+/**
+ * The page rectangle of an image embedded in the body text, from the span's raw object bytes:
+ * four little-endian doubles (x0, y0, x1, y1) at byte 68, stored again at byte 277 (sdocx doesn't
+ * decode them yet). Accepted only when both copies agree and the image is neither rotated nor
+ * cropped (those aren't handled); otherwise null, and the image is drawn as sdocx draws it.
+ */
+export function inlineImageRect(span: InsObjectSpan): Rect | null {
+  const img = span.content?.Image;
+  if (span.object_type !== "Image" || !img || img.rotation_degrees != null || img.crop_rect != null) return null;
+  const data = span.object_data;
+  if (!Array.isArray(data) || data.length < 309) return null;
+  const view = new DataView(Uint8Array.from(data).buffer);
+  const at = (o: number) => [0, 8, 16, 24].map((k) => view.getFloat64(o + k, true));
+  const [a, b] = [at(68), at(277)];
+  if (!a.every((v, i) => Number.isFinite(v) && Math.abs(v - b[i]) < 1e-6)) return null;
+  const [x0, y0, x1, y1] = a;
+  return x1 > x0 && y1 > y0 && x0 > -1e5 && y0 > -1e5 && x1 < 1e6 && y1 < 1e7 ? { x0, y0, x1, y1 } : null;
 }
